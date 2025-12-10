@@ -108,61 +108,61 @@ def lexer(text):
                 gc()
                 CS = 'N10'
             elif current_char == '{':
-                tokens.append((2, 1, '{', CS))
+                tokens.append((2, 1))
                 gc()
             elif current_char == '}':
-                tokens.append((2, 2, '}', CS))
+                tokens.append((2, 2))
                 gc()
             elif current_char == '(':
-                tokens.append((2, 3, '(', CS))
+                tokens.append((2, 3))
                 gc()
             elif current_char == ')':
-                tokens.append((2, 4, ')', CS))
+                tokens.append((2, 4))
                 gc()
             elif current_char == ':':
                 gc()
                 if current_char == '=':
-                    tokens.append((2, 5, ":=", CS))
+                    tokens.append((2, 5))
                     gc()
                 else:
                     CS = 'ER'
             elif current_char == '!':
                 gc()
                 if current_char == '=':
-                    tokens.append((2, 6, "!=", CS))
+                    tokens.append((2, 6))
                     gc()
                 else:
-                    tokens.append((2, 18, "!", CS))
+                    tokens.append((2, 18))
                     gc()
             elif current_char == '=':
                 gc()
                 if current_char == '=':
-                    tokens.append((2, 7, "==", CS))
+                    tokens.append((2, 7))
                     gc()
                 else:
                     CS = 'ER'
             elif current_char == '<':
                 gc()
                 if current_char == '=':
-                    tokens.append((2, 9, "<=", CS))
+                    tokens.append((2, 9))
                     gc()
                 else:
-                    tokens.append((2, 8, "<", CS))
+                    tokens.append((2, 8))
             elif current_char == '>':
                 gc()
                 if current_char == '=':
-                    tokens.append((2, 11, ">=", CS))
+                    tokens.append((2, 11))
                     gc()
                 else:
-                    tokens.append((2, 10, ">", CS))
+                    tokens.append((2, 10))
             elif current_char == '+':
-                tokens.append((2, 12, "+", CS))
+                tokens.append((2, 12))
                 gc()
             elif current_char == '-':
-                tokens.append((2, 13, "-", CS))
+                tokens.append((2, 13))
                 gc()
             elif current_char == '*':
-                tokens.append((2, 15, "*", CS))
+                tokens.append((2, 15))
                 gc()
             elif current_char == '/':
                 gc()
@@ -170,26 +170,26 @@ def lexer(text):
                     gc()
                     CS = 'C1'
                 else:
-                    tokens.append((2, 16, "/", CS))
+                    tokens.append((2, 16))
             elif current_char == '&':
                 gc()
                 if current_char == '&':
-                    tokens.append((2, 17, "&&", CS))
+                    tokens.append((2, 17))
                     gc()
                 else:
                     CS = 'ER'
             elif current_char == '|':
                 gc()
                 if current_char == '|':
-                    tokens.append((2, 14, "||", CS))
+                    tokens.append((2, 14))
                     gc()
                 else:
                     CS = 'ER'
             elif current_char == ',':
-                tokens.append((2, 19, ",", CS))
+                tokens.append((2, 19))
                 gc()
             elif current_char == ';':
-                tokens.append((2, 20, ";", CS))
+                tokens.append((2, 20))
                 gc()
             else:
                 CS = 'ER'
@@ -205,7 +205,7 @@ def lexer(text):
                     add()
                     gc()
                     z = put_TN(buffer)
-                    tokens.append((3, z, buffer, CS))
+                    tokens.append((3, z))
                     nill()
                     CS = 'H'
                 else:
@@ -217,7 +217,7 @@ def lexer(text):
                     add()
                     gc()
                     z = put_TN(buffer)
-                    tokens.append((3, z, buffer, CS))
+                    tokens.append((3, z))
                     nill()
                     CS = 'H'
                 else:
@@ -230,7 +230,7 @@ def lexer(text):
                     add()
                     gc()
                     z = put_TN(buffer)
-                    tokens.append((3, z, buffer, CS))
+                    tokens.append((3, z))
                     nill()
                     CS = 'H'
                 else:
@@ -249,13 +249,13 @@ def lexer(text):
                 add()
                 gc()
                 z = put_TN(buffer)
-                tokens.append((3, z, buffer, CS))
+                tokens.append((3, z))
                 nill()
                 gc()
                 CS = 'H'
             else:
                 z = put_TN(buffer)
-                tokens.append((3, z, buffer, CS))
+                tokens.append((3, z))
                 nill()
                 CS = 'H'
 
@@ -275,7 +275,7 @@ def lexer(text):
                 CS = 'E11'
             else:
                 z = put_TN(buffer)
-                tokens.append((3, z, buffer, CS))
+                tokens.append((3, z))
                 nill()
                 CS = 'H'
 
@@ -293,7 +293,7 @@ def lexer(text):
                 add()
                 gc()
             z = put_TN(buffer)
-            tokens.append((3, z, buffer, CS))
+            tokens.append((3, z))
             nill()
             CS = 'H'
 
@@ -303,10 +303,10 @@ def lexer(text):
                 gc()
             z = TW.get(buffer, 0)
             if z != 0:
-                tokens.append((1, z, buffer, CS))
+                tokens.append((1, z))
             else:
                 z = put_TI(buffer)
-                tokens.append((4, z, buffer, CS))
+                tokens.append((4, z))
             nill()
             CS = 'H'
 
@@ -333,18 +333,20 @@ def lexer(text):
 
 if __name__ == "__main__":
     # Примеры чисел
-    sample_code = """
-    {
-      dim a, b, integer;
-      a := 10;
-      b := 0101B;  /* двоичное */
-      writeln 077O, 0A1H, 3.14, 0, 010;
-    }
-    """
+    sample_code = """ {
+  dim x, y integer;
+  dim r real;
+  dim flag boolean;
+  x := 10;
+  y := x + 5;
+  r := x / y;
+  flag := (r > 3.0);
+  writeln x, y, r, flag; 
+  } """
 
     print("Код программы:")
     print(sample_code)
-    print("\nЦепочка лексем (номер_таблицы, номер_в_таблице, лексема, состояние):")
+    print("\nЦепочка лексем (номер_таблицы, номер_в_таблице):")
     try:
         tokens = lexer(sample_code)
         for t in tokens:
