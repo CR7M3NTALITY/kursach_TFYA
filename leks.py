@@ -19,7 +19,28 @@ KEYWORDS = [
 ]
 
 SEPARATORS = [
-    "{", "}", "(", ")", ":=", "!=", "==", "<", "<=", ">", ">=", "+", "-", "||", "*", "/", "&&", "!", ",", ";", "/*", "*/"
+    "{",
+    "}",
+    "(",
+    ")",
+    ":=",
+    "!=",
+    "==",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "+",
+    "-",
+    "||",
+    "*",
+    "/",
+    "&&",
+    "!",
+    ",",
+    ";",
+    "/*",
+    "*/"
 ]
 
 TW = {word: i + 1 for i, word in enumerate(KEYWORDS)}
@@ -33,7 +54,6 @@ def digit(ch):
 
 def is_hex_digit(ch):
     return ch.isdigit() or ch.upper() in 'ABCDEF'
-
 
 def lexer(text):
     text += "\0"
@@ -181,6 +201,7 @@ def lexer(text):
 
             if current_char in 'Bb':
                 if all(c in '01' for c in buffer):
+                    CS = 'N2'
                     add()
                     gc()
                     z = put_TN(buffer)
@@ -192,6 +213,7 @@ def lexer(text):
 
             elif current_char in 'Oo':
                 if all(c in '01234567' for c in buffer):
+                    CS = 'N8'
                     add()
                     gc()
                     z = put_TN(buffer)
@@ -204,7 +226,7 @@ def lexer(text):
 
             elif current_char in 'Hh':
                 if all(is_hex_digit(c) for c in buffer):
-
+                    CS = 'N16'
                     add()
                     gc()
                     z = put_TN(buffer)
