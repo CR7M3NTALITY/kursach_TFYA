@@ -253,11 +253,15 @@ def lexer(text):
                 nill()
                 gc()
                 CS = 'H'
-            else:
-                z = put_TN(buffer)
-                tokens.append((3, z))
-                nill()
-                CS = 'H'
+            else:  # Просто целое десятичное *или* ошибка
+                if let(current_char):
+                    CS = 'ER'
+                else:
+                    z = put_TN(buffer)
+                    tokens.append((3, z, buffer, CS))
+                    nill()
+                    CS = 'H'
+
 
         elif CS == 'P1':
             if digit(current_char):
@@ -349,8 +353,6 @@ def consume_token():
 def match_table(table_num, index):
     """
     Проверяет, совпадает ли текущая лексема с (table_num, index).
-    Если да - считывает её и возвращает True.
-    Если нет - возвращает False.
     """
     tok = current_token()
     if tok and tok[0] == table_num and tok[1] == index:
@@ -361,8 +363,6 @@ def match_table(table_num, index):
 def match_any_in_table(table_num):
     """
     Проверяет, совпадает ли текущая лексема с любой из таблицы table_num.
-    Если да - считывает её и возвращает True.
-    Если нет - возвращает False.
     """
     tok = current_token()
     if tok and tok[0] == table_num:
@@ -694,9 +694,10 @@ if __name__ == "__main__":
   dim x, y integer;
   dim r real;
   dim flag boolean;
-  x := 10;
+  x := 10k;
   y := x + 5;
   r := x / y;
+  z := 0100101B;
   flag := (r > 3.0);
   writeln x, y, r, flag; 
   } """
