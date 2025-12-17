@@ -46,14 +46,18 @@ SEPARATORS = [
 TW = {word: i + 1 for i, word in enumerate(KEYWORDS)}
 TL = {sep: i + 1 for i, sep in enumerate(SEPARATORS)}
 
+
 def let(ch):
     return ch.isalpha() and ch.isascii()
+
 
 def digit(ch):
     return ch.isdigit()
 
+
 def is_hex_digit(ch):
     return ch.isdigit() or ch.upper() in 'ABCDEF'
+
 
 def lexer(text):
     text += "\0"
@@ -221,7 +225,6 @@ def lexer(text):
                     nill()
                     CS = 'H'
                 else:
-
                     CS = 'ER'
 
             elif current_char in 'Hh':
@@ -234,7 +237,6 @@ def lexer(text):
                     nill()
                     CS = 'H'
                 else:
-
                     CS = 'ER'
 
             elif current_char == '.':
@@ -253,15 +255,14 @@ def lexer(text):
                 nill()
                 gc()
                 CS = 'H'
-            else:  # Просто целое десятичное *или* ошибка
+            else:
                 if let(current_char):
                     CS = 'ER'
                 else:
                     z = put_TN(buffer)
-                    tokens.append((3, z, buffer, CS))
+                    tokens.append((3, z))
                     nill()
                     CS = 'H'
-
 
         elif CS == 'P1':
             if digit(current_char):
@@ -333,127 +334,225 @@ def lexer(text):
     if CS == 'ER':
         raise SyntaxError(f"Ошибка лексического анализа. Недопустимый символ или последовательность: '{current_char}'.")
 
-    return tokens
+    return tokens, TI, TN
 
-tokens = []  # Цепочка лексем, полученная от лексического анализатора
-pos = 0      # Текущая позиция в цепочке лексем
+
+# --- КОНЕЦ ЛЕКСИЧЕСКОГО АНАЛИЗАТОРА ---
+
+# ==================== Синтаксический анализатор с Семантическими Проверками ====================
+
+# --- Определение нового типа ошибки ---
+class SemanticError(Exception):
+    pass
+
+
+# --- Глобальные переменные для синтаксического и семантического анализатора ---
+tokens = []
+pos = 0
+TI_lexer = []
+TN_lexer = []
+TI_semantic = {}
+
+
+def add_identifier(name, type_):
+    if name in TI_semantic:
+        raise SemanticError(f"Семантическая ошибка: переменная '{name}' уже объявлена.")
+    TI_semantic[name] = {'type': type_, 'declared': True}
+
+
+def check_identifier_declared(name):
+    if name not in TI_semantic:
+        raise SemanticError(f"Семантическая ошибка: переменная '{name}' не объявлена.")
+
+
+def get_identifier_type(name):
+    check_identifier_declared(name)
+    return TI_semantic[name]['type']
+
+
+def check_type_compatibility(op, type1, type2):
+    if op in ['+', '-']:
+        if type1 == 'integer' and type2 == 'integer':
+            return 'integer'
+        elif type1 in ['integer', 'real'] and type2 in ['integer', 'real']:
+            return 'real'
+        else:
+            raise SemanticError(f"Семантическая ошибка: несовместимые типы для операции '{op}': {type1}, {type2}")
+    elif op == '||':
+        if type1 == 'boolean' and type2 == 'boolean':
+            return 'boolean'
+        else:
+            raise SemanticError(f"Семантическая ошибка: операция '{op}' требует операнды типа 'boolean'")
+    elif op == '&&':
+        if type1 == 'boolean' and type2 == 'boolean':
+            return 'boolean'
+        else:
+            raise SemanticError(f"Семантическая ошибка: операция '{op}' требует операнды типа 'boolean'")
+    elif op in ['*', '/']:
+        if type1 == 'integer' and type2 == 'integer':
+            return 'integer'
+        elif type1 in ['integer', 'real'] and type2 in ['integer', 'real']:
+            return 'real'
+        else:
+            raise SemanticError(f"Семантическая ошибка: несовместимые типы для операции '{op}': {type1}, {type2}")
+    elif op in ['!=', '==']:
+        if type1 in ['integer', 'real'] and type2 in ['integer', 'real']:
+            return 'boolean'
+        elif type1 == 'boolean' and type2 == 'boolean':
+            return 'boolean'
+        else:
+            raise SemanticError(f"Семантическая ошибка: операция '{op}' не поддерживается для типов: {type1}, {type2}")
+    elif op in ['<', '<=', '>', '>=']:
+        if type1 in ['integer', 'real'] and type2 in ['integer', 'real']:
+            return 'boolean'
+        else:
+            raise SemanticError(f"Семантическая ошибка: операция '{op}' требует операнды типа 'integer' или 'real'")
+    return None
+
+
+def check_type_unary(op, type1):
+    if op == '!':
+        if type1 == 'boolean':
+            return 'boolean'
+        else:
+            raise SemanticError(f"Семантическая ошибка: унарная операция '{op}' требует операнд типа 'boolean'")
+    return None
+
 
 def current_token():
-    """Возвращает текущую лексему без её извлечения."""
     global pos
     if pos >= len(tokens):
         return None
     return tokens[pos]
 
+
 def consume_token():
-    """Считывает (пропускает) текущую лексему."""
     global pos
     pos += 1
 
+
 def match_table(table_num, index):
-    """
-    Проверяет, совпадает ли текущая лексема с (table_num, index).
-    """
     tok = current_token()
     if tok and tok[0] == table_num and tok[1] == index:
         consume_token()
         return True
     return False
 
+
 def match_any_in_table(table_num):
-    """
-    Проверяет, совпадает ли текущая лексема с любой из таблицы table_num.
-    """
     tok = current_token()
     if tok and tok[0] == table_num:
         consume_token()
         return True
     return False
 
+
 def parse_program():
-    """
-    <program> → { <body> }
-    """
     if not match_table(2, 1):  # {
-        raise SyntaxError(f"Ошибка: ожидалась '{{', найдена {current_token()}")
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась '{{', найдена {current_token()}")
     parse_body()
     if not match_table(2, 2):  # }
-        raise SyntaxError(f"Ошибка: ожидалась '}}', найдена {current_token()}")
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась '}}', найдена {current_token()}")
+
 
 def parse_body():
-    """
-    <body> → <declaration_or_statement> ; <body>
-          | ε (пустая цепочка - программа может быть {})
-    """
     tok = current_token()
     if not tok:
-        return  # ε (пустая цепочка)
-    # Пробуем распознать <declaration_or_statement>
-    # Это может быть dim (1,1), или идентификатор (4, x), или служебное слово (1, x)
-    # Надо смотреть вперёд.
+        return
     if tok[0] == 1 and tok[1] == 1:  # dim
         parse_declaration()
         if not match_table(2, 20):  # ;
-            raise SyntaxError(f"Ошибка: ожидалась ';', найдена {current_token()}")
-        parse_body() # Рекурсивный вызов для оставшейся части
-    elif tok[0] == 4 or (tok[0] == 1 and tok[1] in [5, 7, 11, 12, 14, 15]):  # идентификатор или if, for, while, begin, readln, writeln
+            raise SyntaxError(f"Синтаксическая ошибка: ожидалась ';', найдена {current_token()}")
+        parse_body()
+    elif tok[0] == 4 or (tok[0] == 1 and tok[1] in [5, 7, 11, 12, 14, 15]):
         parse_statement()
         if not match_table(2, 20):  # ;
-            raise SyntaxError(f"Ошибка: ожидалась ';', найдена {current_token()}")
-        parse_body() # Рекурсивный вызов для оставшейся части
+            raise SyntaxError(f"Синтаксическая ошибка: ожидалась ';', найдена {current_token()}")
+        parse_body()
     else:
         return
+
 
 def parse_declaration():
-    """
-    <declaration> → dim <id_list> <type>
-    """
-    if not match_table(1, 1):
-        raise SyntaxError(f"Ошибка: ожидалось 'dim', найдена {current_token()}")
-    parse_id_list()
-    parse_type()
+    if not match_table(1, 1):  # dim
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'dim', найдена {current_token()}")
 
-def parse_id_list():
-    """
-    <id_list> → <identifier> , <id_list>
-             | <identifier>
-    """
-    if not match_any_in_table(4):  # идентификатор
-        raise SyntaxError(f"Ошибка: ожидался идентификатор в объявлении, найдена {current_token()}")
-    # Проверяем, есть ли запятая
-    while match_table(2, 19):  # ,
-        if not match_any_in_table(4):  # идентификатор после запятой
-            raise SyntaxError(f"Ошибка: ожидался идентификатор после ',', найдена {current_token()}")
+    def get_name_from_ti_idx(idx):
+        if 1 <= idx <= len(TI_lexer):
+            return TI_lexer[idx - 1]
+        else:
+            raise SemanticError(f"Семантическая ошибка: индекс идентификатора {idx} вне диапазона TI.")
 
-def parse_type():
-    """
-    <type> → integer
-           | real
-           | boolean
-    """
+    id_names = []
+    # Сначала собираем все идентификаторы
+    while True:
+        current_pos_at_id = pos
+        if not match_any_in_table(4):  # идентификатор
+            raise SyntaxError(f"Синтаксическая ошибка: ожидался идентификатор в объявлении, найдена {current_token()}")
+        token_at_id = tokens[current_pos_at_id]  # (4, Z)
+        name = get_name_from_ti_idx(token_at_id[1])
+        if name in id_names:
+            raise SemanticError(f"Семантическая ошибка: дублирующийся идентификатор '{name}' в объявлении.")
+        id_names.append(name)
+
+        # Проверяем, идёт ли запятая
+        if not match_table(2, 19):  # ,
+            # Запятой нет, выходим из цикла
+            break
+        # Если запятая была, цикл продолжается, ожидаем следующий идентификатор
+
+    # Теперь, после списка идентификаторов, ожидаем тип
+    parse_type_internal()
+    type_of_decl = last_parsed_type
+    if type_of_decl is None:
+        raise SyntaxError(f"Синтаксическая ошибка: не удалось определить тип в объявлении.")
+
+    # Добавляем все идентификаторы в семантическую таблицу с этим типом
+    for name in id_names:
+        add_identifier(name, type_of_decl)
+
+
+def parse_type_internal():
+    global last_parsed_type
     if match_table(1, 2):  # integer
+        last_parsed_type = 'integer'
         return
     elif match_table(1, 3):  # real
+        last_parsed_type = 'real'
         return
     elif match_table(1, 4):  # boolean
+        last_parsed_type = 'boolean'
         return
     else:
-        raise SyntaxError(f"Ошибка: ожидался тип (integer, real, boolean), найдена {current_token()}")
+        last_parsed_type = None
+        raise SyntaxError(f"Синтаксическая ошибка: ожидался тип (integer, real, boolean), найдена {current_token()}")
+
+
+last_parsed_type = None
+
+
+def parse_id_list():
+    global TI_lexer
+    current_pos_at_first_id = pos
+    if not match_any_in_table(4):  # идентификатор
+        raise SyntaxError(f"Синтаксическая ошибка: ожидался идентификатор в списке, найдена {current_token()}")
+    token_at_first_id = tokens[current_pos_at_first_id]  # (4, Z)
+    name = TI_lexer[token_at_first_id[1] - 1]
+    check_identifier_declared(name)
+
+    while match_table(2, 19):  # ,
+        current_pos_for_next_id = pos
+        if not match_any_in_table(4):  # идентификатор после запятой
+            raise SyntaxError(f"Синтаксическая ошибка: ожидался идентификатор после ',', найдена {current_token()}")
+        token_for_next_id = tokens[current_pos_for_next_id]  # (4, Z_next)
+        next_name = TI_lexer[token_for_next_id[1] - 1]
+        check_identifier_declared(next_name)
+
 
 def parse_statement():
-    """
-    <statement> → <assignment>
-                | <if_statement>
-                | <for_statement>
-                | <while_statement>
-                | <compound_statement>
-                | <input_statement>
-                | <output_statement>
-    """
     tok = current_token()
     if not tok:
-        raise SyntaxError("Ошибка: неожиданный конец входной цепочки в операторе")
-    # Смотрим, с чего начинается оператор
+        raise SyntaxError("Синтаксическая ошибка: неожиданный конец входной цепочки в операторе")
     if tok[0] == 4:  # идентификатор -> присваивание
         parse_assignment()
     elif tok[0] == 1:
@@ -461,259 +560,265 @@ def parse_statement():
             parse_if_statement()
         elif tok[1] == 7:  # for
             parse_for_statement()
-        elif tok[1] == 11: # while
+        elif tok[1] == 11:  # while
             parse_while_statement()
-        elif tok[1] == 12: # begin
+        elif tok[1] == 12:  # begin
             parse_compound_statement()
-        elif tok[1] == 14: # readln
+        elif tok[1] == 14:  # readln
             parse_input_statement()
-        elif tok[1] == 15: # writeln
+        elif tok[1] == 15:  # writeln
             parse_output_statement()
         else:
-            raise SyntaxError(f"Ошибка: неожиданное ключевое слово в операторе: {tok}")
+            raise SyntaxError(f"Синтаксическая ошибка: неожиданное ключевое слово в операторе: {tok}")
     else:
-        raise SyntaxError(f"Ошибка: неожиданная лексема в операторе: {tok}")
+        raise SyntaxError(f"Синтаксическая ошибка: неожиданная лексема в операторе: {tok}")
+
 
 def parse_assignment():
-    """
-    <assignment> → <identifier> := <expression>
-    """
+    global TI_lexer
+    current_pos_at_ident = pos
     if not match_any_in_table(4):  # идентификатор
-        raise SyntaxError(f"Ошибка: ожидался идентификатор в присваивании, найдена {current_token()}")
+        raise SyntaxError(f"Синтаксическая ошибка: ожидался идентификатор в присваивании, найдена {current_token()}")
+    token_at_ident = tokens[current_pos_at_ident]  # (4, Z)
+    var_name = TI_lexer[token_at_ident[1] - 1]
+    check_identifier_declared(var_name)
+    var_type = get_identifier_type(var_name)
+
     if not match_table(2, 5):  # :=
-        raise SyntaxError(f"Ошибка: ожидалось ':=', найдена {current_token()}")
-    parse_expression()
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось ':=', найдена {current_token()}")
+
+    expr_type = parse_expression()
+
+    if var_type == 'integer' and expr_type not in ['integer']:
+        raise SemanticError(f"Семантическая ошибка: несовместимый тип в присваивании. {var_type} = {expr_type}")
+    elif var_type == 'real' and expr_type not in ['integer', 'real']:
+        raise SemanticError(f"Семантическая ошибка: несовместимый тип в присваивании. {var_type} = {expr_type}")
+    elif var_type == 'boolean' and expr_type != 'boolean':
+        raise SemanticError(f"Семантическая ошибка: несовместимый тип в присваивании. {var_type} = {expr_type}")
+
 
 def parse_if_statement():
-    """
-    <if_statement> → if ( <expression> ) <statement> [else <statement>]
-    """
     if not match_table(1, 5):  # if
-        raise SyntaxError(f"Ошибка: ожидалось 'if', найдена {current_token()}")
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'if', найдена {current_token()}")
     if not match_table(2, 3):  # (
-        raise SyntaxError(f"Ошибка: ожидалась '(', найдена {current_token()}")
-    parse_expression()
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась '(', найдена {current_token()}")
+    expr_type = parse_expression()
+    if expr_type != 'boolean':
+        raise SemanticError(f"Семантическая ошибка: условие в 'if' должно быть типа 'boolean', получено {expr_type}")
     if not match_table(2, 4):  # )
-        raise SyntaxError(f"Ошибка: ожидалась ')', найдена {current_token()}")
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась ')', найдена {current_token()}")
     parse_statement()
     if match_table(1, 6):  # else
         parse_statement()
 
-def parse_for_statement():
-    """
-    <for_statement> → for <assignment> to <expression> [step <expression>] <statement> next
-    """
-    if not match_table(1, 7):  # for
-        raise SyntaxError(f"Ошибка: ожидалось 'for', найдена {current_token()}")
-    parse_assignment() # Счётчик
-    if not match_table(1, 8):  # to
-        raise SyntaxError(f"Ошибка: ожидалось 'to', найдена {current_token()}")
-    parse_expression() # Граница
-    if match_table(1, 9):  # step
-        parse_expression() # Шаг
-    parse_statement() # Тело
-    if not match_table(1, 10):  # next
-        raise SyntaxError(f"Ошибка: ожидалось 'next', найдена {current_token()}")
 
-def parse_while_statement():
-    """
-    <while_statement> → while ( <expression> ) <statement>
-    """
-    if not match_table(1, 11): # while
-        raise SyntaxError(f"Ошибка: ожидалось 'while', найдена {current_token()}")
-    if not match_table(2, 3):  # (
-        raise SyntaxError(f"Ошибка: ожидалась '(', найдена {current_token()}")
-    parse_expression()
-    if not match_table(2, 4):  # )
-        raise SyntaxError(f"Ошибка: ожидалась ')', найдена {current_token()}")
+def parse_for_statement():
+    global TI_lexer
+    if not match_table(1, 7):  # for
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'for', найдена {current_token()}")
+
+    current_pos_at_counter = pos
+    if not match_any_in_table(4):  # идентификатор (счётчик)
+        raise SyntaxError(f"Синтаксическая ошибка: ожидался идентификатор (счётчик) в for, найдена {current_token()}")
+    token_at_counter = tokens[current_pos_at_counter]  # (4, Z)
+    counter_name = TI_lexer[token_at_counter[1] - 1]
+    check_identifier_declared(counter_name)
+    counter_type = get_identifier_type(counter_name)
+    if counter_type != 'integer':
+        raise SemanticError(f"Семантическая ошибка: счётчик в 'for' должен быть типа 'integer', получен {counter_type}")
+
+    if not match_table(2, 5):  # :=
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось ':=' после счётчика в for, найдена {current_token()}")
+    start_expr_type = parse_expression()
+    if start_expr_type != 'integer':
+        raise SemanticError(
+            f"Семантическая ошибка: начальное значение в 'for' должно быть типа 'integer', получено {start_expr_type}")
+
+    if not match_table(1, 8):  # to
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'to' в for, найдена {current_token()}")
+    end_expr_type = parse_expression()
+    if end_expr_type != 'integer':
+        raise SemanticError(
+            f"Семантическая ошибка: конечное значение в 'for' должно быть типа 'integer', получено {end_expr_type}")
+
+    if match_table(1, 9):  # step
+        step_expr_type = parse_expression()
+        if step_expr_type != 'integer':
+            raise SemanticError(
+                f"Семантическая ошибка: шаг в 'for' должен быть типа 'integer', получено {step_expr_type}")
+
     parse_statement()
 
+    if not match_table(1, 10):  # next
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'next' в for, найдена {current_token()}")
+
+
+def parse_while_statement():
+    if not match_table(1, 11):  # while
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'while', найдена {current_token()}")
+    if not match_table(2, 3):  # (
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась '(', найдена {current_token()}")
+    expr_type = parse_expression()
+    if expr_type != 'boolean':
+        raise SemanticError(f"Семантическая ошибка: условие в 'while' должно быть типа 'boolean', получено {expr_type}")
+    if not match_table(2, 4):  # )
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалась ')', найдена {current_token()}")
+    parse_statement()
+
+
 def parse_compound_statement():
-    """
-    <compound_statement> → begin <statement> ; <statement_list> end
-    """
-    if not match_table(1, 12): # begin
-        raise SyntaxError(f"Ошибка: ожидалось 'begin', найдена {current_token()}")
+    if not match_table(1, 12):  # begin
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'begin', найдена {current_token()}")
     parse_statement()
     while match_table(2, 20):  # ;
         parse_statement()
-    if not match_table(1, 13): # end
-        raise SyntaxError(f"Ошибка: ожидалось 'end', найдена {current_token()}")
+    if not match_table(1, 13):  # end
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'end', найдена {current_token()}")
+
 
 def parse_input_statement():
-    """
-    <input_statement> → readln <id_list>
-    """
-    if not match_table(1, 14): # readln
-        raise SyntaxError(f"Ошибка: ожидалось 'readln', найдена {current_token()}")
+    if not match_table(1, 14):  # readln
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'readln', найдена {current_token()}")
     parse_id_list()
 
+
 def parse_output_statement():
-    """
-    <output_statement> → writeln <expr_list>
-    """
-    if not match_table(1, 15): # writeln
-        raise SyntaxError(f"Ошибка: ожидалось 'writeln', найдена {current_token()}")
+    if not match_table(1, 15):  # writeln
+        raise SyntaxError(f"Синтаксическая ошибка: ожидалось 'writeln', найдена {current_token()}")
     parse_expr_list()
 
+
 def parse_expr_list():
-    """
-    <expr_list> → <expression> , <expr_list>
-                 | <expression>
-    """
     parse_expression()
-    while match_table(2, 19): # ,
+    while match_table(2, 19):  # ,
         parse_expression()
+
 
 def parse_expression():
-    """
-    <expression> → <relation>
-    """
-    parse_relation()
+    return parse_relation()
+
 
 def parse_relation():
-    """
-    <relation> → <sum> <relation_tail>
-    <relation_tail> → != <sum> <relation_tail>
-                    | == <sum> <relation_tail>
-                    | < <sum> <relation_tail>
-                    | <= <sum> <relation_tail>
-                    | > <sum> <relation_tail>
-                    | >= <sum> <relation_tail>
-                    | ε
-    """
-    parse_sum()
-    # Проверяем, идёт ли операция отношения
+    left_type = parse_sum()
     tok = current_token()
-    if tok and tok[0] == 2 and tok[1] in [6, 7, 8, 9, 10, 11]: # !=, ==, <, <=, >, >=
-        consume_token() # Пропускаем операцию
-        parse_sum() # Правый операнд
-        # Продолжаем проверять, может быть цепочка: a < b <= c
-        parse_relation_tail()
+    if tok and tok[0] == 2 and tok[1] in [6, 7, 8, 9, 10, 11]:  # !=, ==, <, <=, >, >=
+        op_map = {6: '!=', 7: '==', 8: '<', 9: '<=', 10: '>', 11: '>='}
+        op = op_map[tok[1]]
+        consume_token()
+        right_type = parse_sum()
+        result_type = check_type_compatibility(op, left_type, right_type)
+        return result_type
+    return left_type
 
-def parse_relation_tail():
-    """
-    Вспомогательная функция для цепочек операций отношения.
-    """
-    tok = current_token()
-    if tok and tok[0] == 2 and tok[1] in [6, 7, 8, 9, 10, 11]: # !=, ==, <, <=, >, >=
-        consume_token() # Пропускаем операцию
-        parse_sum() # Правый операнд
-        parse_relation_tail() # Рекурсивно проверяем дальше
 
 def parse_sum():
-    """
-    <sum> → <product> <sum_tail>
-    <sum_tail> → + <product> <sum_tail>
-               | - <product> <sum_tail>
-               | || <product> <sum_tail>
-               | ε
-    """
-    parse_product()
-    parse_sum_tail()
+    left_type = parse_product()
+    while True:
+        tok = current_token()
+        if tok and tok[0] == 2 and tok[1] in [12, 13, 14]:  # +, -, ||
+            op_map = {12: '+', 13: '-', 14: '||'}
+            op = op_map[tok[1]]
+            consume_token()
+            right_type = parse_product()
+            left_type = check_type_compatibility(op, left_type, right_type)
+        else:
+            break
+    return left_type
 
-def parse_sum_tail():
-    """
-    Вспомогательная функция для цепочек операций сложения.
-    """
-    tok = current_token()
-    if tok and tok[0] == 2 and tok[1] in [12, 13, 14]: # +, -, ||
-        consume_token() # Пропускаем операцию
-        parse_product() # Правый операнд
-        parse_sum_tail() # Рекурсивно проверяем дальше
 
 def parse_product():
-    """
-    <product> → <factor> <product_tail>
-    <product_tail> → * <factor> <product_tail>
-                   | / <factor> <product_tail>
-                   | && <factor> <product_tail>
-                   | ε
-    """
-    parse_factor()
-    parse_product_tail()
+    left_type = parse_factor()
+    while True:
+        tok = current_token()
+        if tok and tok[0] == 2 and tok[1] in [15, 16, 17]:  # *, /, &&
+            op_map = {15: '*', 16: '/', 17: '&&'}
+            op = op_map[tok[1]]
+            consume_token()
+            right_type = parse_factor()
+            left_type = check_type_compatibility(op, left_type, right_type)
+        else:
+            break
+    return left_type
 
-def parse_product_tail():
-    """
-    Вспомогательная функция для цепочек операций умножения.
-    """
-    tok = current_token()
-    if tok and tok[0] == 2 and tok[1] in [15, 16, 17]: # *, /, &&
-        consume_token() # Пропускаем операцию
-        parse_factor() # Правый операнд
-        parse_product_tail() # Рекурсивно проверяем дальше
 
 def parse_factor():
-    """
-    <factor> → <identifier>
-             | <number>
-             | <logical_constant>
-             | ! <factor>
-             | ( <expression> )
-    """
     tok = current_token()
     if not tok:
-        raise SyntaxError("Ошибка: неожиданный конец входной цепочки в факторе")
+        raise SyntaxError("Синтаксическая ошибка: неожиданный конец входной цепочки в факторе")
     if tok[0] == 4:  # идентификатор
+        name = TI_lexer[tok[1] - 1]
+        check_identifier_declared(name)
         consume_token()
+        return get_identifier_type(name)
     elif tok[0] == 3:  # число
+        num_str = TN_lexer[tok[1] - 1]
         consume_token()
-    elif tok[0] == 1 and tok[1] in [16, 17]: # true, false
+        if '.' in num_str or 'E' in num_str.upper():
+            return 'real'
+        else:
+            return 'integer'
+    elif tok[0] == 1 and tok[1] in [16, 17]:  # true, false
         consume_token()
+        return 'boolean'
     elif match_table(2, 18):  # !
-        parse_factor() # Правый операнд унарной операции
+        operand_type = parse_factor()
+        result_type = check_type_unary('!', operand_type)
+        return result_type
     elif match_table(2, 3):  # (
-        parse_expression()
+        result_type = parse_expression()
         if not match_table(2, 4):  # )
-            raise SyntaxError(f"Ошибка: ожидалась ')', найдена {current_token()}")
+            raise SyntaxError(f"Синтаксическая ошибка: ожидалась ')', найдена {current_token()}")
+        return result_type
     else:
-        raise SyntaxError(f"Ошибка: неожиданная лексема в факторе: {tok}")
+        raise SyntaxError(f"Синтаксическая ошибка: неожиданная лексема в факторе: {tok}")
 
-def syntax_analyzer(input_tokens):
-    """
-    Основная функция синтаксического анализатора.
-    Принимает цепочку лексем и проверяет синтаксис.
-    """
-    global tokens, pos
+
+def syntax_analyzer(input_tokens, ti_list, tn_list):
+    global tokens, pos, TI_semantic, TI_lexer, TN_lexer
     tokens = input_tokens
     pos = 0
+    TI_lexer = ti_list
+    TN_lexer = tn_list
+    TI_semantic.clear()
     try:
         parse_program()
         if pos < len(tokens):
-            # Если после разбора остались необработанные лексемы
-            raise SyntaxError(f"Ошибка: осталась необработанная лексема: {tokens[pos]} на позиции {pos}")
-        print("Программа синтаксически корректна.")
+            raise SyntaxError(f"Синтаксическая ошибка: осталась необработанная лексема: {tokens[pos]} на позиции {pos}")
+        print("Программа синтаксически и семантически корректна.")
         return True
     except SyntaxError as e:
-        print(f"Ошибка синтаксического анализа: {e}")
+        print(f"Ошибка: {e}")
+        return False
+    except SemanticError as e:
+        print(f"Ошибка: {e}")
         return False
 
+
 if __name__ == "__main__":
-    # Пример кода для тестирования
     sample_code = """ {
   dim x, y integer;
   dim r real;
   dim flag boolean;
-  x := 10k;
+  x := 10;
   y := x + 5;
   r := x / y;
-  z := 0100101B;
   flag := (r > 3.0);
   writeln x, y, r, flag; 
   } """
 
     print("Код программы:")
     print(sample_code)
-
-
+    print("\nЦепочка лексем (номер_таблицы, номер_в_таблице):")
     try:
-        tokens_from_lexer = lexer(sample_code)
-        print("\nЦепочка лексем (номер_таблицы, номер_в_таблице):")
+        tokens_from_lexer, TI_lexed, TN_lexed = lexer(sample_code)
         for t in tokens_from_lexer:
             print(t)
 
-        print("\nЗапуск синтаксического анализа")
-        syntax_analyzer(tokens_from_lexer)
+        print("\n--- Запуск синтаксического и семантического анализа ---")
+        syntax_analyzer(tokens_from_lexer, TI_lexed, TN_lexed)
 
     except SyntaxError as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка лексического анализа: {e}")
+    except SemanticError as e:
+        print(
+            f"Ошибка лексического анализа (ожидается SemErr, но бросается SynErr): {e}")  # Это не должно сработать на данном коде
